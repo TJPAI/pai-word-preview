@@ -1,0 +1,74 @@
+name: Deploy PAI Word preview
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/deploy-preview.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '17,47 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Checkout complete development source
+        uses: actions/checkout@v4
+        with:
+          repository: TJPAI/pai-word
+          ref: core20k-rebuild-v1
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Record source commit
+        id: source
+        working-directory: source
+        run: |
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Source: TJPAI/pai-word@core20k-rebuild-v1 ($SOURCE_SHA)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare isolated static preview
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          mkdir -p site
+          rsync -a --exclude='.git' --exclude='.github' --exclude='CNAME' source/ site/
+          test -f site/rebuild-preview/index.html
+          printf '%s\n' "$SOURCE_SHA" > site/preview-source-sha.txt
+          touch site/.nojekyll
+          cat > site/index.html <<'HTML'
+          <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=./rebuild-preview/"><title>PAI Word Preview</title></head><body><a href="./rebuild-preview/">打开 PAI Word 独立预览</a><script>location.replace('./rebuild-preview/' + location.search + location.hash)</script></body></html>
+          HTML
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy preview to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Deployment summary
+        env:
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          echo "Preview: ${PAGE_URL}rebuild-preview/" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source SHA: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"

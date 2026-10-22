@@ -48,6 +48,23 @@ jobs:
           cat > site/index.html <<'HTML'
           <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=./rebuild-preview/"><title>PAI Word Preview</title></head><body><a href="./rebuild-preview/">打开 PAI Word 独立预览</a><script>location.replace('./rebuild-preview/' + location.search + location.hash)</script></body></html>
           HTML
+      - name: Checkout complete performance source
+        uses: actions/checkout@v4
+        with:
+          repository: TJPAI/pai-word
+          ref: home-perf-safe-load-20261022
+          path: perf-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Prepare isolated performance preview
+        run: |
+          PERF_SHA=$(git -C perf-source rev-parse HEAD)
+          test ! -e site/perf-preview
+          mkdir -p site/perf-preview
+          rsync -a --exclude='.git' --exclude='.github' --exclude='CNAME' perf-source/ site/perf-preview/
+          test -f site/perf-preview/rebuild-preview/index.html
+          printf '%s\n' "$PERF_SHA" > site/perf-preview/preview-source-sha.txt
+          echo "Performance source: TJPAI/pai-word@home-perf-safe-load-20261022 ($PERF_SHA)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

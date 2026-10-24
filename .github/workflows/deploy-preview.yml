@@ -65,6 +65,22 @@ jobs:
           test -f site/perf-preview/rebuild-preview/index.html
           printf '%s\n' "$PERF_SHA" > site/perf-preview/preview-source-sha.txt
           echo "Performance source: TJPAI/pai-word@home-perf-safe-load-20261022 ($PERF_SHA)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Checkout Scene500 E5 staging builder
+        uses: actions/checkout@v4
+        with:
+          repository: TJPAI/pai-word
+          ref: scene500-ai-training-pilot
+          path: e5-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Stage Scene500 E5 runtime (pinned release ZIP)
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 600 \
+            "https://github.com/TJPAI/pai-word-preview/releases/download/scene500-e5-v1.6-test/scene500-e5-v16-patched.zip" \
+            --output runtime.zip
+          python3 e5-source/experiments/scene500-ai-training/v1.6/prepare-pages.py runtime.zip site/scene500-e5
+          test -f site/scene500-e5/index.html
+          echo "Scene500 E5 staged at /scene500-e5/ (ZIP + index + model SHA-256 verified by prepare-pages.py)" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

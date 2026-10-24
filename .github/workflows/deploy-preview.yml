@@ -81,6 +81,23 @@ jobs:
           python3 e5-source/experiments/scene500-ai-training/v1.6/prepare-pages.py runtime.zip site/scene500-e5
           test -f site/scene500-e5/index.html
           echo "Scene500 E5 staged at /scene500-e5/ (ZIP + index + model SHA-256 verified by prepare-pages.py)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Checkout B184 isolated recognition source (pinned commit)
+        uses: actions/checkout@v4
+        with:
+          repository: TJPAI/pai-word
+          ref: 393651b8e9089956502ea9c97f6aca3d5415f332
+          path: b184-source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Stage B184 isolated recognition preview
+        run: |
+          test ! -e site/b184-recognition
+          mkdir -p site/b184-recognition
+          rsync -a --exclude='.git' b184-source/rebuild-preview/b184-recognition/ site/b184-recognition/
+          test -f site/b184-recognition/index.html
+          test -f site/b184-recognition/contract.mjs
+          test -f site/b184-recognition/candidates-b184.jsonl
+          printf '%s\n' '393651b8e9089956502ea9c97f6aca3d5415f332' > site/b184-recognition/preview-source-sha.txt
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

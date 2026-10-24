@@ -1,0 +1,61 @@
+name: Validate Scene500 E5 staging
+
+# Validation only: builds and hash-verifies the Scene500 E5 staging tree and
+# uploads it as a regular workflow artifact for inspection.
+# This workflow has NO Pages permissions and never deploys anything.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scene500-e5-validate
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout staging builder source
+        uses: actions/checkout@v4
+        with:
+          repository: TJPAI/pai-word
+          ref: scene500-ai-training-pilot
+          path: source
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Download pinned runtime ZIP
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 600 \
+            "https://github.com/TJPAI/pai-word-preview/releases/download/scene500-e5-v1.6-test/scene500-e5-v16-patched.zip" \
+            --output runtime.zip
+          ls -la runtime.zip
+      - name: Verify hashes and stage runtime
+        run: |
+          python3 source/experiments/scene500-ai-training/v1.6/prepare-pages.py runtime.zip staged/scene500-e5
+      - name: Assert staged tree
+        run: |
+          test -f staged/scene500-e5/index.html
+          test -f staged/scene500-e5/encoder/scene500-e5-worker.mjs
+          test -f staged/scene500-e5/encoder/scene500-e5-encoder.mjs
+          test -f staged/scene500-e5/vendor/transformers.min.js
+          test -f staged/scene500-e5/vendor/ort-wasm-simd-threaded.jsep.wasm
+          test -f staged/scene500-e5/models/multilingual-e5-small/onnx/model_quantized.onnx
+          test -f staged/scene500-e5/models/multilingual-e5-small/tokenizer.json
+          test -f staged/scene500-e5/assets/scene500-c2-index.json
+          test -f staged/scene500-e5/assets/catalog-v0.2.json
+          {
+            echo "## Scene500 E5 staging validation"
+            echo "- prepare-pages.py hash gate: PASS (ZIP a0fc661f..., index eae39123..., model f80102d3...)"
+            echo "- staged tree:"
+            du -sh staged/scene500-e5
+            find staged -type f | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload staged site for inspection (NOT a Pages deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scene500-e5-staged-site
+          path: staged
+          retention-days: 7

@@ -113,16 +113,7 @@ jobs:
           test -f site/b184-recognition/contract.mjs
           test -f site/b184-recognition/candidates-b184.jsonl
           printf '%s\n' '393651b8e9089956502ea9c97f6aca3d5415f332' > site/b184-recognition/preview-source-sha.txt
-      - name: Verify existing preview source identities are unchanged
-        shell: bash
-        run: |
-          set -euo pipefail
-          for prefix in '' perf-preview/ teaching-preview/ b184-recognition/; do
-            curl --fail --silent --show-error --location --retry 3 "https://tjpai.github.io/pai-word-preview/${prefix}preview-source-sha.txt" -o deployed-sha.txt
-            diff -u deployed-sha.txt "site/${prefix}preview-source-sha.txt"
-          done
-          find site -type f -print0 | sort -z | xargs -0 sha256sum > existing-site.sha256
-      - name: Checkout complete V2.2 integration candidate (pinned commit)
+      - name: Checkout V2.2 integration candidate (fixed source commit)
         uses: actions/checkout@v4
         with:
           repository: TJPAI/pai-word
@@ -134,33 +125,63 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Materialize and verify V2.2 bilingual runtimes and integration gates
+      - name: Verify V2.2 source and materialize Chinese V0.10.1
         working-directory: v22-source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = '46cae30d63b9e33befb35a772611bb8b7be99de2'
           node scripts/materialize-zh-core20k-v0101.mjs
-          node -e "const f=require('fs'),c=require('crypto'),z=require('zlib');const b=f.readFileSync('scene500-recommendation/zh-core20k-v0101-scene500-runtime.json');if(b.length!==6454987||c.createHash('sha256').update(b).digest('hex')!=='18adea58a3615935c1b632c22934a91855171063862f7471999f9900415e8093')throw Error('ZH_V0101_BINARY_DRIFT');if(JSON.parse(z.gunzipSync(f.readFileSync('data/core20k-runtime.json.gz'))).headwords.length!==20000)throw Error('EN_CORE20K_COUNT');console.log('PASS bilingual Runtime identity and count')"
-          node scripts/core20k-unified-runtime-test.mjs data/core20k-runtime.json.gz
-          node tools/answer-enrichment/test-standard-answer-cleanup.mjs
-          node tools/integration/test-four-line-contract.mjs
-          node tools/integration/test-s113-staging-overlay.mjs
-          node tools/integration/test-four-line-scene-bridge.mjs
-          echo 'PASS V2.2 QA: Chinese V0.10.1, English adapter, original answer, four-line contract, S113 inactive staging, Scene500 bridge' >> "$GITHUB_STEP_SUMMARY"
-      - name: Stage isolated V2.2 integration candidate and verify existing files
+      - name: Verify English Core20K adapter
+        working-directory: v22-source
+        run: node scripts/core20k-unified-runtime-test.mjs data/core20k-runtime.json.gz
+      - name: Verify original answer page
+        working-directory: v22-source
+        run: node tools/answer-enrichment/test-standard-answer-cleanup.mjs
+      - name: Verify four-line integration contract
+        working-directory: v22-source
+        run: node tools/integration/test-four-line-contract.mjs
+      - name: Verify S113 Staging remains inactive
+        working-directory: v22-source
+        run: node tools/integration/test-s113-staging-overlay.mjs
+      - name: Verify Scene500 bridge
+        working-directory: v22-source
+        run: node tools/integration/test-four-line-scene-bridge.mjs
+      - name: Stage verified V2.2 integration candidate
         shell: bash
         run: |
           set -euo pipefail
           test ! -e site/v22-integration
           mkdir -p site/v22-integration
           rsync -a --exclude='.git' --exclude='.github' --exclude='CNAME' v22-source/ site/v22-integration/
-          test -s site/v22-integration/rebuild-preview/index.html
-          test -s site/v22-integration/scene500-recommendation/zh-core20k-v0101-scene500-runtime.json
+          test -f site/v22-integration/rebuild-preview/index.html
+          cmp v22-source/scene500-recommendation/zh-core20k-v0101-scene500-runtime.json site/v22-integration/scene500-recommendation/zh-core20k-v0101-scene500-runtime.json
           git -C v22-source rev-parse HEAD > site/v22-integration/preview-source-sha.txt
-          sha256sum --check --quiet existing-site.sha256
-          echo 'V2.2 candidate: https://tjpai.github.io/pai-word-preview/v22-integration/rebuild-preview/index.html' >> "$GITHUB_STEP_SUMMARY"
-          echo 'V2.2 source: 46cae30d63b9e33befb35a772611bb8b7be99de2; S113 remains inactive Staging. Existing site files unchanged.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'V2.2 candidate (NOT stable): /v22-integration/rebuild-preview/index.html' >> "$GITHUB_STEP_SUMMARY"
+          echo 'V2.2 source: 46cae30d63b9e33befb35a772611bb8b7be99de2; all six QA gates PASS; S113 7 records remain inactive Staging.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Require all existing previews byte-identical to deployed run 40288331578
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          root = Path('site')
+          rows = []
+          for path in root.rglob('*'):
+              relative = path.relative_to(root).as_posix()
+              if relative == 'v22-integration' or relative.startswith('v22-integration/'):
+                  continue
+              if path.is_file():
+                  rows.append((relative, hashlib.sha256(path.read_bytes()).hexdigest()))
+          rows.sort()
+          payload = ''.join(f'{digest}  {path}\n' for path, digest in rows).encode()
+          actual = hashlib.sha256(payload).hexdigest()
+          expected = 'b8875e51685aba3e6144417b3270a53516c3b9df0bd5a0556307ba4f62d61f14'
+          assert len(rows) == 2158 and actual == expected, f'Existing preview drift: {len(rows)} files, {actual}; deployment blocked'
+          print(f'PASS all {len(rows)} existing files unchanged, including perf-preview: {actual}')
+          PY
+          echo 'PASS existing previews: all 2158 file paths and SHA256 contents unchanged from deployed run 40288331578.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

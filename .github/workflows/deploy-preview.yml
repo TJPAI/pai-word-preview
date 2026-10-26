@@ -118,8 +118,8 @@ jobs:
         run: |
           set -euo pipefail
           for prefix in '' perf-preview/ teaching-preview/ b184-recognition/; do
-            curl --fail --silent --show-error --location --retry 3 "https://tjpai.github.io/pai-word-preview/4{prefix}preview-source-sha.txt" -o deployed-sha.txt
-            diff -u deployed-sha.txt "site/4{prefix}preview-source-sha.txt"
+            curl --fail --silent --show-error --location --retry 3 "https://tjpai.github.io/pai-word-preview/${prefix}preview-source-sha.txt" -o deployed-sha.txt
+            diff -u deployed-sha.txt "site/${prefix}preview-source-sha.txt"
           done
           find site -type f -print0 | sort -z | xargs -0 sha256sum > existing-site.sha256
       - name: Checkout complete V2.2 integration candidate (pinned commit)

@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths: ['.github/workflows/deploy-preview.yml']
   workflow_dispatch:
+    inputs:
+      v22_source_sha:
+        description: 'PAI Word V2.2 source commit SHA'
+        required: true
+        type: string
+        default: '1e85f3e90b9ea11fd9f0c75d21559e0ef2f24f86'
 
 permissions:
   contents: read
@@ -113,11 +119,22 @@ jobs:
           test -f site/b184-recognition/contract.mjs
           test -f site/b184-recognition/candidates-b184.jsonl
           printf '%s\n' '393651b8e9089956502ea9c97f6aca3d5415f332' > site/b184-recognition/preview-source-sha.txt
+      
+      - name: Validate V2.2 source SHA
+        env:
+          V22_SHA: ${{ inputs.v22_source_sha }}
+        shell: bash
+        run: |
+          if [[ ! "$V22_SHA" =~ ^[a-fA-F0-9]{40}$ ]]; then
+            echo "Invalid V2.2 source SHA"
+            exit 1
+          fi
+          
       - name: Checkout V2.2 integration candidate (fixed source commit)
         uses: actions/checkout@v4
         with:
           repository: TJPAI/pai-word
-          ref: 46cae30d63b9e33befb35a772611bb8b7be99de2
+          ref: ${{ inputs.v22_source_sha }}
           path: v22-source
           fetch-depth: 1
           persist-credentials: false
@@ -130,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '46cae30d63b9e33befb35a772611bb8b7be99de2'
+          test "$(git rev-parse HEAD)" = '${{ inputs.v22_source_sha }}'
           node scripts/materialize-zh-core20k-v0101.mjs
       - name: Verify English Core20K adapter
         working-directory: v22-source
@@ -158,7 +175,7 @@ jobs:
           cmp v22-source/scene500-recommendation/zh-core20k-v0101-scene500-runtime.json site/v22-integration/scene500-recommendation/zh-core20k-v0101-scene500-runtime.json
           git -C v22-source rev-parse HEAD > site/v22-integration/preview-source-sha.txt
           echo 'V2.2 candidate (NOT stable): /v22-integration/rebuild-preview/index.html' >> "$GITHUB_STEP_SUMMARY"
-          echo 'V2.2 source: 46cae30d63b9e33befb35a772611bb8b7be99de2; all six QA gates PASS; S113 7 records remain inactive Staging.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'V2.2 source: ${{ inputs.v22_source_sha }}; all six QA gates PASS; S113 7 records remain inactive Staging.' >> "$GITHUB_STEP_SUMMARY"
       - name: Require all existing previews byte-identical to deployed run 40288331578
         shell: bash
         run: |
